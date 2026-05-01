@@ -122,17 +122,25 @@ export const taskService = {
       sortOrder?: "asc" | "desc";
     }
   ) {
-    // first check if user is a project memeber
-    await ensureProjectMember(projectId, userId);
+    // first check if user is a project memeber and get their role
+    const membership = await ensureProjectMember(projectId, userId);
 
     const { page, limit, status, priority, assignedToId, search, sortBy, sortOrder } =
       options;
     const skip = (page - 1) * limit;
 
+    // ROLE-BASED FILTERING:
+    // - ADMINs see ALL tasks in the project
+    // - MEMBERs see ONLY tasks assigned to THEM
+    // per assignment: "Members: View and update assigned tasks only"
+    const memberFilter =
+      membership.role !== "ADMIN" ? { assignedToId: userId } : {};
+
     // build where clause dynmically — only add filters that were provided
     // this keeps the query efficient (dont filter by undefined values)
     const where: any = {
       projectId,
+      ...memberFilter,
       ...(status && { status }),
       ...(priority && { priority }),
       ...(assignedToId && { assignedToId }),

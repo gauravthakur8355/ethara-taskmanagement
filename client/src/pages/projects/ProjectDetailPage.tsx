@@ -66,6 +66,15 @@ export default function ProjectDetailPage() {
     setShowCreateTask(true);
   };
 
+  const handleStatusChange = async (taskId: string, newStatus: TaskStatus) => {
+    try {
+      await taskApi.update(taskId, { status: newStatus });
+      await fetchTasks(); // refresh board
+    } catch (err: any) {
+      alert(err.response?.data?.message || "Failed to update task status");
+    }
+  };
+
   const handleRemoveMember = async (memberUserId: string) => {
     if (!projectId) return;
     if (!confirm("Are you sure you want to remove this member?")) return;
@@ -156,11 +165,13 @@ export default function ProjectDetailPage() {
             <Users className="h-4 w-4 text-zinc-400" />
           </button>
 
-          {/* add task */}
-          <Button onClick={() => handleCreateTask("TODO")}>
-            <Plus className="h-4 w-4" />
-            Add Task
-          </Button>
+          {/* add task — admin only */}
+          {isAdmin && (
+            <Button onClick={() => handleCreateTask("TODO")}>
+              <Plus className="h-4 w-4" />
+              Add Task
+            </Button>
+          )}
         </div>
       </div>
 
@@ -233,6 +244,7 @@ export default function ProjectDetailPage() {
       <KanbanBoard
         tasks={tasks}
         onCreateTask={handleCreateTask}
+        onStatusChange={handleStatusChange}
         isAdmin={isAdmin}
       />
 
