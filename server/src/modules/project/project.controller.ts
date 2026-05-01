@@ -44,7 +44,7 @@ export const projectController = {
   // GET /api/projects/:id
   async findById(req: AuthenticatedRequest, res: Response): Promise<void> {
     const project = await projectService.findById(
-      req.params.id,
+      req.params.id as string,
       req.user!.userId
     );
 
@@ -54,7 +54,7 @@ export const projectController = {
   // PATCH /api/projects/:id
   async update(req: AuthenticatedRequest, res: Response): Promise<void> {
     const project = await projectService.update(
-      req.params.id,
+      req.params.id as string,
       req.body,
       req.user!.userId
     );
@@ -64,7 +64,7 @@ export const projectController = {
 
   // DELETE /api/projects/:id
   async delete(req: AuthenticatedRequest, res: Response): Promise<void> {
-    await projectService.delete(req.params.id, req.user!.userId);
+    await projectService.delete(req.params.id as string, req.user!.userId);
 
     sendSuccess(res, null, "Project delted permanently");
   },
@@ -74,7 +74,7 @@ export const projectController = {
   // POST /api/projects/:id/members
   async addMember(req: AuthenticatedRequest, res: Response): Promise<void> {
     const member = await projectService.addMember(
-      req.params.id,
+      req.params.id as string,
       req.body,
       req.user!.userId
     );
@@ -88,8 +88,8 @@ export const projectController = {
     res: Response
   ): Promise<void> {
     await projectService.removeMember(
-      req.params.id,
-      req.params.userId,
+      req.params.id as string,
+      req.params.userId as string,
       req.user!.userId
     );
 

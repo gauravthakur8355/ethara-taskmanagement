@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { Plus, ChevronDown, ChevronUp, Check, ArrowRight } from "lucide-react";
+import {
+  Plus,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  RotateCcw,
+  Play,
+  Eye,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
@@ -11,10 +19,13 @@ import {
 } from "@/services/task.service";
 
 // ══════════════════════════════════════════════════════════════
-// Kanban Board — Bento Grid Layout with status update support
+// Kanban Board — Bento Grid with Strict RBAC Transitions
 //
-// 2x2 responsive grid. admins see all tasks + create buttons,
-// members see only their assigned tasks + status update buttons
+// Transition rules enforced in UI:
+// MEMBER: TODO → IN_PROGRESS, IN_PROGRESS → IN_REVIEW
+// ADMIN:  all above + IN_REVIEW → DONE, IN_REVIEW → IN_PROGRESS
+//
+// Members can't create tasks, can't mark DONE, can't skip states
 // ══════════════════════════════════════════════════════════════
 
 const columns: {
@@ -29,12 +40,33 @@ const columns: {
   { status: "DONE", dotColor: "bg-emerald-500", gradient: "from-emerald-500/10 to-emerald-500/5", bgTint: "hover:bg-emerald-500/5" },
 ];
 
-// the allowed next status transitions — keeps flow linear
-const nextStatus: Record<TaskStatus, TaskStatus | null> = {
-  TODO: "IN_PROGRESS",
-  IN_PROGRESS: "IN_REVIEW",
-  IN_REVIEW: "DONE",
-  DONE: null, // already done
+// ─── Allowed transitions per role (mirrors backend state machine) ───
+const MEMBER_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
+  TODO: ["IN_PROGRESS"],
+  IN_PROGRESS: ["IN_REVIEW"],
+  IN_REVIEW: [],
+  DONE: [],
+};
+
+const ADMIN_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
+  TODO: ["IN_PROGRESS"],
+  IN_PROGRESS: ["IN_REVIEW"],
+  IN_REVIEW: ["DONE", "IN_PROGRESS"],
+  DONE: [],
+};
+
+// transition action config for buttons
+const transitionConfig: Record<string, { label: string; icon: typeof Play; variant: "primary" | "approve" | "reject" }> = {
+  "TODO→IN_PROGRESS":       { label: "Start",         icon: Play,       variant: "primary" },
+  "IN_PROGRESS→IN_REVIEW":  { label: "Submit Review",  icon: Eye,        variant: "primary" },
+  "IN_REVIEW→DONE":         { label: "Approve",        icon: Check,      variant: "approve" },
+  "IN_REVIEW→IN_PROGRESS":  { label: "Reject",         icon: RotateCcw,  variant: "reject" },
+};
+
+const variantStyles = {
+  primary: "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900",
+  approve: "bg-emerald-600 text-white",
+  reject:  "bg-red-500/90 text-white",
 };
 
 interface KanbanBoardProps {
@@ -62,6 +94,9 @@ export default function KanbanBoard({
       return next;
     });
   };
+
+  // get allowed transitions for this role
+  const transitionMap = isAdmin ? ADMIN_TRANSITIONS : MEMBER_TRANSITIONS;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -92,7 +127,6 @@ export default function KanbanBoard({
               </div>
 
               <div className="flex items-center gap-1">
-                {/* only admins can create tasks */}
                 {isAdmin && (
                   <Button
                     variant="ghost"
@@ -135,8 +169,8 @@ export default function KanbanBoard({
                       key={task.id}
                       task={task}
                       bgTint={col.bgTint}
+                      allowedNextStatuses={transitionMap[col.status]}
                       onStatusChange={onStatusChange}
-                      isAdmin={isAdmin}
                     />
                   ))
                 )}
@@ -149,59 +183,68 @@ export default function KanbanBoard({
   );
 }
 
-// ─── Task Item with status update ───
+// ─── Task Item with RBAC-aware status actions ───
 
 function TaskItem({
   task,
   bgTint,
+  allowedNextStatuses,
   onStatusChange,
-  isAdmin,
 }: {
   task: Task;
   bgTint: string;
+  allowedNextStatuses: TaskStatus[];
   onStatusChange: (taskId: string, newStatus: TaskStatus) => void;
-  isAdmin: boolean;
 }) {
-  const [updating, setUpdating] = useState(false);
+  const [updating, setUpdating] = useState<TaskStatus | null>(null);
   const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== "DONE";
-  const next = nextStatus[task.status];
 
-  const handleAdvanceStatus = async (e: React.MouseEvent) => {
+  const handleTransition = async (e: React.MouseEvent, newStatus: TaskStatus) => {
     e.stopPropagation();
-    if (!next || updating) return;
-    setUpdating(true);
+    if (updating) return;
+    setUpdating(newStatus);
     try {
-      await onStatusChange(task.id, next);
+      await onStatusChange(task.id, newStatus);
     } finally {
-      setUpdating(false);
+      setUpdating(null);
     }
   };
 
   return (
     <div className={`group rounded-xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 p-3 ${bgTint} transition-all`}>
-      {/* top: priority */}
+      {/* top: priority + actions */}
       <div className="flex items-center justify-between mb-1.5">
         <Badge className={`${priorityColors[task.priority]} text-[10px] px-1.5 py-0`} variant="secondary">
           {priorityLabels[task.priority]}
         </Badge>
 
-        {/* status advance button — visible on hover */}
-        {next && (
-          <button
-            onClick={handleAdvanceStatus}
-            disabled={updating}
-            className="opacity-0 group-hover:opacity-100 transition-all flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 hover:scale-105 disabled:opacity-50"
-            title={`Move to ${statusLabels[next]}`}
-          >
-            {task.status === "IN_REVIEW" ? (
-              <><Check className="h-3 w-3" /> Done</>
-            ) : (
-              <><ArrowRight className="h-3 w-3" /> {statusLabels[next]}</>
-            )}
-          </button>
-        )}
+        {/* status action buttons — only show allowed transitions */}
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+          {allowedNextStatuses.map((nextStatus) => {
+            const key = `${task.status}→${nextStatus}`;
+            const config = transitionConfig[key];
+            if (!config) return null;
 
-        {task.status === "DONE" && (
+            const Icon = config.icon;
+            const isLoading = updating === nextStatus;
+
+            return (
+              <button
+                key={nextStatus}
+                onClick={(e) => handleTransition(e, nextStatus)}
+                disabled={!!updating}
+                className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${variantStyles[config.variant]} hover:scale-105 transition-all disabled:opacity-50`}
+                title={config.label}
+              >
+                <Icon className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+                {config.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* completed indicator */}
+        {task.status === "DONE" && allowedNextStatuses.length === 0 && (
           <span className="text-[10px] text-emerald-500 font-medium flex items-center gap-0.5">
             <Check className="h-3 w-3" /> Completed
           </span>

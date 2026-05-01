@@ -24,7 +24,7 @@ export const taskController = {
     req: AuthenticatedRequest,
     res: Response
   ): Promise<void> {
-    const { projectId } = req.params;
+    const projectId = req.params.projectId as string;
     const { page, limit, status, priority, assignedToId, search, sortBy, sortOrder } =
       req.query as any;
 
@@ -54,7 +54,7 @@ export const taskController = {
 
   // GET /api/tasks/:id
   async findById(req: AuthenticatedRequest, res: Response): Promise<void> {
-    const task = await taskService.findById(req.params.id, req.user!.userId);
+    const task = await taskService.findById(req.params.id as string, req.user!.userId);
 
     sendSuccess(res, task, "Task detials retrieved");
   },
@@ -62,7 +62,7 @@ export const taskController = {
   // PATCH /api/tasks/:id
   async update(req: AuthenticatedRequest, res: Response): Promise<void> {
     const task = await taskService.update(
-      req.params.id,
+      req.params.id as string,
       req.body,
       req.user!.userId
     );
@@ -72,7 +72,7 @@ export const taskController = {
 
   // DELETE /api/tasks/:id
   async delete(req: AuthenticatedRequest, res: Response): Promise<void> {
-    await taskService.delete(req.params.id, req.user!.userId);
+    await taskService.delete(req.params.id as string, req.user!.userId);
 
     sendSuccess(res, null, "Task delted permanently");
   },

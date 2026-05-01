@@ -5,21 +5,27 @@ import {
   BadRequestError,
 } from "../../shared/errors/AppError";
 import { CreateTaskInput, UpdateTaskInput } from "./task.validation";
+import {
+  validateTaskTransition,
+  type TaskStatus,
+  type ProjectRole,
+} from "../../shared/utils/taskStateMachine";
 
 // ══════════════════════════════════════════════════════════════
-// Task Service — where the real work happnes (pun intended)
+// Task Service — Strict RBAC Implementation
 //
-// every method here checks that the reqesting user is a member
-// of the project the task belongs to. cant let random people
-// create tasks in projects there not part of.
-//
-// also handles the sortign/filtering logic for task lists —
-// this gets surprisingly complecated once you add multiple
-// filter dimensions. if you think this is over-enginered,
-// wait until product asks for saved filters and custom views lol
+// KEY RULES:
+// 1. Only ADMINs can create tasks
+// 2. Only ADMINs can assign/reassign tasks
+// 3. MEMBERs see ONLY tasks assigned to them
+// 4. MEMBERs can update ONLY their assigned tasks
+// 5. Status transitions follow strict state machine:
+//    - MEMBER: TODO → IN_PROGRESS → IN_REVIEW
+//    - ADMIN:  + IN_REVIEW → DONE, IN_REVIEW → IN_PROGRESS (reject)
+// 6. No one can skip states (no TODO → DONE)
 // ══════════════════════════════════════════════════════════════
 
-// helper to check project membershp — used by almost every method
+// helper to check project membership and return role
 const ensureProjectMember = async (projectId: string, userId: string) => {
   const membership = await prisma.projectMember.findUnique({
     where: {
@@ -39,16 +45,19 @@ const ensureProjectMember = async (projectId: string, userId: string) => {
 export const taskService = {
   /**
    * Create a new task within a project
-   * - validates that creator is a project member
-   * - validates that assignee (if provided) is also a project memebr
-   * - auto-sets positon to the end of the list
+   * ADMIN ONLY — members cannot create tasks
    */
   async create(data: CreateTaskInput, userId: string) {
-    // verify the creator is a member of the project
-    await ensureProjectMember(data.projectId, userId);
+    // verify the creator is a project ADMIN
+    const membership = await ensureProjectMember(data.projectId, userId);
 
-    // if assigning to someone, make sure they're also a project memeber
-    // cant assign tasks to people who arent in the project — that would be wierd
+    if (membership.role !== "ADMIN") {
+      throw new ForbiddenError(
+        "Only project admins can create tasks. Members can only view and update their assigned tasks."
+      );
+    }
+
+    // if assigning to someone, make sure they're also a project member
     if (data.assignedToId) {
       const assigneeMembership = await prisma.projectMember.findUnique({
         where: {
@@ -61,13 +70,12 @@ export const taskService = {
 
       if (!assigneeMembership) {
         throw new BadRequestError(
-          "The assigned user is not a memebr of this project"
+          "The assigned user is not a member of this project"
         );
       }
     }
 
-    // figure out the next positon value (put new tasks at the end)
-    // this is for drag-and-drop ordering within a status colum
+    // figure out the next position value (put new tasks at the end)
     const lastTask = await prisma.task.findFirst({
       where: { projectId: data.projectId, status: data.status as any },
       orderBy: { position: "desc" },
@@ -103,10 +111,9 @@ export const taskService = {
   },
 
   /**
-   * Get all tasks for a project with filtring and pagination
-   * - supports filtering by status, priorty, assignee, search term
-   * - supports sorting by multipel fields
-   * - only accessble to project members
+   * Get all tasks for a project
+   * - ADMINs see ALL tasks
+   * - MEMBERs see ONLY tasks assigned to them
    */
   async findByProject(
     projectId: string,
@@ -122,7 +129,6 @@ export const taskService = {
       sortOrder?: "asc" | "desc";
     }
   ) {
-    // first check if user is a project memeber and get their role
     const membership = await ensureProjectMember(projectId, userId);
 
     const { page, limit, status, priority, assignedToId, search, sortBy, sortOrder } =
@@ -130,14 +136,10 @@ export const taskService = {
     const skip = (page - 1) * limit;
 
     // ROLE-BASED FILTERING:
-    // - ADMINs see ALL tasks in the project
-    // - MEMBERs see ONLY tasks assigned to THEM
-    // per assignment: "Members: View and update assigned tasks only"
+    // ADMINs see all tasks, MEMBERs see only their assigned tasks
     const memberFilter =
       membership.role !== "ADMIN" ? { assignedToId: userId } : {};
 
-    // build where clause dynmically — only add filters that were provided
-    // this keeps the query efficient (dont filter by undefined values)
     const where: any = {
       projectId,
       ...memberFilter,
@@ -176,7 +178,6 @@ export const taskService = {
 
   /**
    * Get a single task by ID
-   * - includes full details, assignee, creator, and comments
    */
   async findById(taskId: string, userId: string) {
     const task = await prisma.task.findUnique({
@@ -208,48 +209,86 @@ export const taskService = {
     }
 
     // make sure the user is a member of the task's project
-    await ensureProjectMember(task.projectId, userId);
+    const membership = await ensureProjectMember(task.projectId, userId);
+
+    // MEMBER can only view tasks assigned to them
+    if (membership.role !== "ADMIN" && task.assignedToId !== userId) {
+      throw new ForbiddenError(
+        "Members can only view tasks that are assigned to them"
+      );
+    }
 
     return task;
   },
 
   /**
-   * Update a task
-   * - any project memeber can update tasks (not just the creator)
-   * - if changing assignee, validates new assignee is a project memebr
+   * Update a task — the core of the RBAC logic lives here
+   *
+   * PERMISSION RULES:
+   * - ADMINs can update any task in the project
+   * - MEMBERs can only update tasks assigned to THEM
+   *
+   * STATUS TRANSITION RULES (via state machine):
+   * - MEMBER: TODO → IN_PROGRESS, IN_PROGRESS → IN_REVIEW
+   * - ADMIN:  all above + IN_REVIEW → DONE, IN_REVIEW → IN_PROGRESS
+   * - No state skipping (TODO → DONE is ALWAYS invalid)
+   *
+   * ASSIGNMENT RULES:
+   * - Only ADMINs can change assignedToId
    */
   async update(taskId: string, data: UpdateTaskInput, userId: string) {
-    // get the task to find its project
+    // get the full task to check current state
     const existingTask = await prisma.task.findUnique({
       where: { id: taskId },
-      select: { projectId: true },
+      select: {
+        projectId: true,
+        status: true,
+        assignedToId: true,
+      },
     });
 
     if (!existingTask) {
       throw new NotFoundError("Task");
     }
 
-    // verify reqestor is a project member
+    // verify requestor is a project member
     const membership = await ensureProjectMember(existingTask.projectId, userId);
+    const role = membership.role as ProjectRole;
 
-    // ROLE-BASED RESTRICTION:
-    // - ADMINs can update any task in the project
-    // - MEMBERs can only update tasks assigned to THEM
-    // this is per the assignment requirment: "Members can view and update assigned tasks only"
-    if (membership.role !== "ADMIN") {
-      const fullTask = await prisma.task.findUnique({
-        where: { id: taskId },
-        select: { assignedToId: true },
-      });
-
-      if (fullTask?.assignedToId !== userId) {
+    // ─── MEMBER RESTRICTIONS ───
+    if (role !== "ADMIN") {
+      // members can only update their own assigned tasks
+      if (existingTask.assignedToId !== userId) {
         throw new ForbiddenError(
           "Members can only update tasks that are assigned to them"
         );
       }
+
+      // members cannot reassign tasks
+      if (data.assignedToId !== undefined) {
+        throw new ForbiddenError(
+          "Only admins can assign or reassign tasks"
+        );
+      }
+
+      // members cannot change priority
+      if (data.priority !== undefined) {
+        throw new ForbiddenError(
+          "Only admins can change task priority"
+        );
+      }
     }
 
-    // if changing assignee, validate they're a project memebr too
+    // ─── STATUS TRANSITION VALIDATION ───
+    if (data.status) {
+      validateTaskTransition(
+        existingTask.status as TaskStatus,
+        data.status as TaskStatus,
+        role
+      );
+    }
+
+    // ─── ASSIGNEE VALIDATION (admin-only, validated above) ───
     if (data.assignedToId) {
       const assigneeMembership = await prisma.projectMember.findUnique({
         where: {
@@ -262,7 +301,7 @@ export const taskService = {
 
       if (!assigneeMembership) {
         throw new BadRequestError(
-          "Cannot assign task to someone who isnt a project member"
+          "Cannot assign task to someone who isn't a project member"
         );
       }
     }
@@ -290,9 +329,7 @@ export const taskService = {
   },
 
   /**
-   * Delete a task
-   * - only project admins or the task creater can delete
-   * - regular members cant just delete other peoples tasks
+   * Delete a task — ADMIN ONLY
    */
   async delete(taskId: string, userId: string) {
     const task = await prisma.task.findUnique({
@@ -304,12 +341,11 @@ export const taskService = {
       throw new NotFoundError("Task");
     }
 
-    // check if user is project admin OR the task creator
     const membership = await ensureProjectMember(task.projectId, userId);
 
-    if (membership.role !== "ADMIN" && task.createdById !== userId) {
+    if (membership.role !== "ADMIN") {
       throw new ForbiddenError(
-        "Only project admins or the task creater can delete tasks"
+        "Only project admins can delete tasks"
       );
     }
 
