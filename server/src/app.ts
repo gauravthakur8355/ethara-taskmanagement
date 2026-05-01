@@ -16,6 +16,7 @@ import {
 import authRoutes from "./modules/auth/auth.routes";
 import projectRoutes from "./modules/project/project.routes";
 import taskRoutes from "./modules/task/task.routes";
+import dashboardRoutes from "./modules/dashboard/dashboard.routes";
 
 // task listing by project — seperate import for nested route
 import { authenticate } from "./middleware/auth.middleware";
@@ -134,6 +135,7 @@ app.get("/api/health", (_req: Request, res: Response) => {
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/projects", projectRoutes);
 app.use("/api/v1/tasks", taskRoutes);
+app.use("/api/v1/dashboard", dashboardRoutes);
 
 // nested route: GET /api/v1/projects/:projectId/tasks
 app.get(
@@ -149,6 +151,7 @@ app.get(
 app.use("/api/auth", authRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/tasks", taskRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 app.get(
   "/api/projects/:projectId/tasks",
   authenticate as any,

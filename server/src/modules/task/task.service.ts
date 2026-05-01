@@ -222,7 +222,24 @@ export const taskService = {
     }
 
     // verify reqestor is a project member
-    await ensureProjectMember(existingTask.projectId, userId);
+    const membership = await ensureProjectMember(existingTask.projectId, userId);
+
+    // ROLE-BASED RESTRICTION:
+    // - ADMINs can update any task in the project
+    // - MEMBERs can only update tasks assigned to THEM
+    // this is per the assignment requirment: "Members can view and update assigned tasks only"
+    if (membership.role !== "ADMIN") {
+      const fullTask = await prisma.task.findUnique({
+        where: { id: taskId },
+        select: { assignedToId: true },
+      });
+
+      if (fullTask?.assignedToId !== userId) {
+        throw new ForbiddenError(
+          "Members can only update tasks that are assigned to them"
+        );
+      }
+    }
 
     // if changing assignee, validate they're a project memebr too
     if (data.assignedToId) {
