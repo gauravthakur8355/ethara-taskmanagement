@@ -1,0 +1,48 @@
+import { Router, Request, Response } from "express";
+import { authenticate } from "../../middleware/auth.middleware";
+import { asyncHandler } from "../../middleware/error.middleware";
+import { prisma } from "../../config/database";
+import { sendSuccess } from "../../shared/utils/response";
+
+// ══════════════════════════════════════════════════════════════
+// User routes — search users for inviting to projects
+// keeping this lightweight — just the search endpoint for now
+// ══════════════════════════════════════════════════════════════
+
+const router = Router();
+
+router.use(authenticate as any);
+
+// GET /api/v1/users/search?email=xxx
+// searches users by email (exact or partial match)
+// returns basic user info — no passwords or sensitive data obviously
+router.get(
+  "/search",
+  asyncHandler(async (req: Request, res: Response) => {
+    const { email } = req.query;
+
+    if (!email || typeof email !== "string" || email.trim().length < 2) {
+      sendSuccess(res, [], "Provide at least 2 characters to search");
+      return;
+    }
+
+    const users = await prisma.user.findMany({
+      where: {
+        email: { contains: email.trim(), mode: "insensitive" },
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        avatar: true,
+        role: true,
+      },
+      take: 10,
+    });
+
+    sendSuccess(res, users, `Found ${users.length} users`);
+  })
+);
+
+export default router;
