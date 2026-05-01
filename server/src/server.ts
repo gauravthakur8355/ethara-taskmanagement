@@ -1,19 +1,19 @@
 import app from "./app";
 import { env } from "./config/env";
+import { logger } from "./config/logger";
 import { disconnectDB } from "./config/database";
 
 // ══════════════════════════════════════════════════════════════
-// Server Entry Point — this is where eveything starts
+// Server Entry Point — production ready
 //
-// why is this seperate from app.ts?
-// becuase in tests, we want to import the app WITHOUT starting
-// the actual HTTP server. this file ONLY handles:
-// 1. starting the server
-// 2. graceful shutdwon
+// seperate from app.ts so tests can import the app without
+// binding to a port. this file ONLY handles:
+// 1. starting the HTTP server
+// 2. graceful shutdwon (SIGTERM, SIGINT)
 // 3. uncaught error handling
 //
-// if the server crashes in production and you find yourself reading
-// this file — im sorry. check the logs, grab some coffe, you got this.
+// all logging goes thru Winston now — no more console.log
+// (well except for the startup banner becuase it looks cool)
 // ══════════════════════════════════════════════════════════════
 
 const startServer = async (): Promise<void> => {
@@ -22,48 +22,55 @@ const startServer = async (): Promise<void> => {
       console.log(`
   ╔═══════════════════════════════════════════════════╗
   ║                                                   ║
-  ║   🚀 Ethara API Server                            ║
+  ║   🚀 Ethara API Server v1.0.0                     ║
   ║                                                   ║
   ║   Port:        ${String(env.PORT).padEnd(33)}║
   ║   Environment: ${env.NODE_ENV.padEnd(33)}║
-  ║   Health:      http://localhost:${env.PORT}/api/health   ║
+  ║   API Base:    http://localhost:${env.PORT}/api/v1      ║
+  ║   Health:      http://localhost:${env.PORT}/api/v1/health║
+  ║                                                   ║
+  ║   Production features:                            ║
+  ║   ✅ Winston logging                              ║
+  ║   ✅ Rate limiting (tiered)                       ║
+  ║   ✅ Helmet security headers                      ║
+  ║   ✅ CORS configured                              ║
+  ║   ✅ API versioning (v1)                          ║
+  ║   ✅ Graceful shutdown                            ║
   ║                                                   ║
   ║   Ready to recieve requests! 💪                   ║
   ║                                                   ║
   ╚═══════════════════════════════════════════════════╝
       `);
+
+      logger.info("Server started successfully", {
+        port: env.PORT,
+        enviroment: env.NODE_ENV,
+        apiBase: `/api/v1`,
+      });
     });
 
     // ─── Graceful Shutdown ───
-    // when the process gets a termination signal (SIGTERM from Docker,
-    // SIGINT from Ctrl+C), we want to:
+    // when the process gets a terminaton signal:
     // 1. stop accepting new conections
-    // 2. finish processing in-flight requsts
-    // 3. close the database connection
+    // 2. finish in-flight requsts
+    // 3. close database connection
     // 4. exit cleanly
-    //
-    // without this, active requests would get abruptly killed
-    // and database connections would leak. not great for producton.
-
     const gracefulShutdown = async (signal: string) => {
-      console.log(`\n⚠️  Received ${signal} — starting gracful shutdown...`);
+      logger.warn(`Received ${signal} — starting gracful shutdown...`);
 
-      // stop accepting new connections
       server.close(async () => {
-        console.log("📡 HTTP server closed — no more incomming connections");
+        logger.info("HTTP server closed — no more incomming connections");
 
-        // disconnect from database
         await disconnectDB();
-        console.log("✅ Graceful shutdwon complete — goodbye! 👋");
+        logger.info("Database disconneted — graceful shutdown complete 👋");
 
         process.exit(0);
       });
 
-      // if the server doesnt close within 10 seconds, force kill
-      // this is a safty net — should never happen in practice
-      // but if it does, we definately dont want the process hanging forever
+      // safty net — force kill after 10 seconds
+      // if somthing is hanging, we definately dont want to wait forever
       setTimeout(() => {
-        console.error("❌ Forced shutdwon — server took too long to close");
+        logger.error("Forced shutdwon — server took too long to close");
         process.exit(1);
       }, 10000);
     };
@@ -72,36 +79,25 @@ const startServer = async (): Promise<void> => {
     process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
     // ─── Uncaught Error Handlers ───
-    // these are the absolute last resort — if an error makes it here,
-    // somthing went seriously wrong and we probaly need to restart
-    //
-    // unhandledRejection = a Promise rejected without a .catch()
-    // uncaughtException = a synchronous throw that nobody caught
-
     process.on("unhandledRejection", (reason: unknown) => {
-      console.error("💥 UNHANDLED PROMISE REJECTION:");
-      console.error(reason);
-      // in production, you'd want to send this to an error tracking service
-      // like Sentry before shutting down
-      // dont exit here — let the error handler deal with it
+      logger.error("UNHANDLED PROMISE REJECTION", { reason });
+      // dont exit — let the error handler deal with it
+      // but in production you'd want to send this to Sentry/Datadog
     });
 
     process.on("uncaughtException", (error: Error) => {
-      console.error("💥 UNCAUGHT EXCEPTION — this is bad:");
-      console.error(error);
-      // this one IS fatal — the app is in an unknown state
-      // we MUST exit and let the process manager (PM2, Docker) restart us
-      // tryng to continue after an uncaught exception is dangrous
+      logger.error("UNCAUGHT EXCEPTION — this is fatal", {
+        error: error.message,
+        stack: error.stack,
+      });
+      // this IS fatal — must exit and let PM2/Docker restart us
       gracefulShutdown("uncaughtException");
     });
   } catch (error) {
-    // if we cant even START the server, something is very wrong
-    // (probably a port conflict or database connection issue)
-    console.error("💥 Failed to start server:", error);
+    logger.error("Failed to start server", { error });
     await disconnectDB();
     process.exit(1);
   }
 };
 
-// kick it off — this is where the magic happnes
 startServer();

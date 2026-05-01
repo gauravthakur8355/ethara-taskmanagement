@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { env } from "../config/env";
+import { logger } from "../config/logger";
 import { AppError, ValidationError } from "../shared/errors/AppError";
 import { sendError } from "../shared/utils/response";
 
@@ -8,8 +9,9 @@ import { sendError } from "../shared/utils/response";
 // every error in the entire app eventualy ends up here
 // this is the last line of defence before the client gets a response
 //
-// fun fact: i once forgot to add this middleware and spent 3 hours
-// debuging why my app was returning empty 500 responses. good times.
+// now using Winston for structred logging instead of console.log
+// so errors show up properly in log aggregation tools
+// (Datadog, ELK, CloudWatch etc)
 // ──────────────────────────────────────────────────────────────
 
 export const errorHandler = (
@@ -18,38 +20,36 @@ export const errorHandler = (
   res: Response,
   _next: NextFunction
 ): void => {
-  // log the full error internaly — we need this for debuging
-  // but NEVER send the stack trace to the clent in production
-  console.error("💥 Error caught by global handler:");
-  console.error(`   Name: ${err.name}`);
-  console.error(`   Message: ${err.message}`);
+  // log the full error internaly with Winston
+  // structured format makes it searchible in production
+  logger.error("Error caught by global handler", {
+    name: err.name,
+    message: err.message,
+    path: _req.path,
+    method: _req.method,
+    ip: _req.ip,
+    ...((!env.IS_PRODUCTION) && { stack: err.stack }),
+  });
 
-  if (!env.IS_PRODUCTION) {
-    // in dev mode, print the full stack — makes life eazier
-    console.error(`   Stack: ${err.stack}`);
-  }
-
-  // handle our custom AppError instances — these are "expected" errors
-  // like 404s, 401s, validation failures etc
+  // handle our custom ValidationError — includes field-level errors
   if (err instanceof ValidationError) {
     sendError(res, err.message, err.statusCode, err.code, err.errors);
     return;
   }
 
+  // handle our custom AppError — "expected" errors (404, 401, etc)
   if (err instanceof AppError) {
     sendError(res, err.message, err.statusCode, err.code);
     return;
   }
 
-  // handle Prisma-specific errors — these come from the ORM
-  // and usally mean somthing went wrong with the database
+  // handle Prisma-specific errors — ORM database errors
   if (err.name === "PrismaClientKnownRequestError") {
-    const prismaError = err as any; // yeah i know, "any" is bad, fight me
+    const prismaError = err as any;
 
     switch (prismaError.code) {
       case "P2002":
-        // unique constraint voilation — like trying to register with
-        // an email thats already taken
+        // unique constraint voilation
         sendError(
           res,
           `A record with this ${prismaError.meta?.target?.join(", ") || "value"} already exisits`,
@@ -59,13 +59,12 @@ export const errorHandler = (
         return;
 
       case "P2025":
-        // record not found — someone tried to update/delete somthing
-        // that doesnt exist (or was already delted)
+        // record not found
         sendError(res, "Record not found", 404, "NOT_FOUND");
         return;
 
       case "P2003":
-        // foreign key constraint failed — orphaned refrence
+        // foreign key constraint failed
         sendError(
           res,
           "Related record not found — check your refrences",
@@ -75,15 +74,16 @@ export const errorHandler = (
         return;
 
       default:
-        // some other prisma error we havent handled specificaly
+        logger.error("Unhandled Prisma error", {
+          code: prismaError.code,
+          meta: prismaError.meta,
+        });
         sendError(res, "Database operaton failed", 500, "DATABASE_ERROR");
         return;
     }
   }
 
-  // if we get here, its an unhandeled error — probaly a bug
-  // in production, send a genric message (dont leak internals)
-  // in dev, send the actual error mesage for debuging
+  // unhandeled error — probaly a bug in our code
   const message = env.IS_PRODUCTION
     ? "Something went wrong — our team has been notifed"
     : err.message || "Unknown error occured";
@@ -91,9 +91,8 @@ export const errorHandler = (
   sendError(res, message, 500, "INTERNAL_ERROR");
 };
 
-// catches async errors in route handlers so we dont need try/catch evrywhere
-// wraps the controller function and forwards any rejectons to the error handler
-// this is honestly one of the most usefull utilities in the entire codebase
+// catches async errors so we dont need try/catch in every controller
+// wraps the handler and forwards rejections to the error handler
 export const asyncHandler = (
   fn: (req: Request, res: Response, next: NextFunction) => Promise<any>
 ) => {
