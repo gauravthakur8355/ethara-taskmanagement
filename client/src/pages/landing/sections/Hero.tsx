@@ -7,7 +7,7 @@ const fadeUp = {
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: i * 0.15, duration: 0.6, ease: [0.22, 1, 0.36, 1] },
+    transition: { delay: i * 0.15, duration: 0.6, ease: [0.22, 1, 0.36, 1] as const },
   }),
 };
 
@@ -89,7 +89,7 @@ export default function Hero() {
         <motion.div
           initial={{ opacity: 0, y: 60 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.8, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ delay: 0.8, duration: 0.8, ease: [0.22, 1, 0.36, 1] as const }}
           className="mt-16 relative"
         >
           <div className="mx-auto max-w-3xl rounded-2xl border border-zinc-800 bg-zinc-900/80 backdrop-blur-xl p-6 shadow-2xl shadow-black/40">

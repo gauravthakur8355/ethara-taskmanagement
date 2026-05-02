@@ -44,7 +44,7 @@ export default function HowItWorks() {
               initial={{ opacity: 0, x: -30 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true, margin: "-60px" }}
-              transition={{ delay: i * 0.15, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ delay: i * 0.15, duration: 0.5, ease: [0.22, 1, 0.36, 1] as const }}
               className="flex items-start gap-6 group"
             >
               <div className="flex-shrink-0 w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-600/20 to-indigo-600/20 border border-violet-500/20 flex items-center justify-center text-lg font-bold text-violet-400 group-hover:from-violet-600/30 group-hover:to-indigo-600/30 transition-all">

@@ -9,7 +9,7 @@ export default function CTA() {
         initial={{ opacity: 0, y: 30 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-80px" }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] as const }}
         className="max-w-3xl mx-auto text-center"
       >
         <div className="relative rounded-3xl border border-zinc-800 bg-zinc-900/60 backdrop-blur-sm p-12 sm:p-16 overflow-hidden">
