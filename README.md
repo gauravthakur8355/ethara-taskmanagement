@@ -27,7 +27,7 @@ Built as a simplified version of tools like Trello and Asana.
 - GitHub (main): [github.com/gauravthakur8355](https://github.com/gauravthakur8355)
 - GitHub (this repo): [github.com/2405Gaurav](https://github.com/2405Gaurav)
 
-> **Note on GitHub account:** This project is deployed from [@2405Gaurav](https://github.com/2405Gaurav) because the Railway free tier was already used on my main account ([@gauravthakur8355](https://github.com/gauravthakur8355)). Both accounts are mine — the code and commits are by the same person.
+> **Note on GitHub account:** This project is deployed from ([@gauravthakur8355](https://github.com/gauravthakur8355)) because the Railway free tier was already used on my main account [@2405Gaurav](https://github.com/2405Gaurav). Both accounts are mine — the code and commits are by the same person.
 
 ---
 
@@ -243,19 +243,108 @@ npm run dev      # runs on :5173
 
 ## Deployment (Railway)
 
-Both services are deployed on Railway as separate services from the same monorepo:
+Both frontend and backend are deployed as **separate services** on [Railway](https://railway.app) from the same GitHub repository.
 
-**Backend service:**
-- Root directory: `/server`
-- Build: `npm install && npm run build`
-- Start: `npm start`
-- Env vars: `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `CLIENT_URL`, `NODE_ENV=production`
+### Step 1 — Create a Railway project
 
-**Frontend service:**
-- Root directory: `/client`
-- Build: `npm install && npm run build`
-- Start: `serve -s dist -l tcp://0.0.0.0:${PORT:-3000}`
-- Env vars: `VITE_API_URL=https://<backend-url>/api/v1`
+1. Go to [railway.app](https://railway.app) and create a new project
+2. Connect your GitHub repo (`ethara-taskmanagement`)
+3. You'll create **two services** from this single repo — one for the backend, one for the frontend
+
+---
+
+### Step 2 — Deploy the Backend
+
+1. Click **"New Service"** → **"GitHub Repo"** → select `ethara-taskmanagement`
+2. Go to **Settings → Source** and set:
+
+| Setting         | Value     |
+|-----------------|-----------|
+| Root Directory  | `/server` |
+
+3. Go to **Settings → Build** and set:
+
+| Setting              | Value                          |
+|----------------------|--------------------------------|
+| Custom Build Command | `npm install && npm run build` |
+
+4. Go to **Settings → Deploy** and set:
+
+| Setting              | Value           |
+|----------------------|-----------------|
+| Custom Start Command | `npm start`     |
+
+5. Go to **Settings → Networking** → click **"Generate Domain"** to get a public URL
+
+6. Go to **Variables** tab and add:
+
+```env
+NODE_ENV=production
+DATABASE_URL=postgresql://user:pass@host/dbname?sslmode=require
+JWT_ACCESS_SECRET=your-secret-key-here
+JWT_REFRESH_SECRET=your-other-secret-key-here
+JWT_ACCESS_EXPIRY=15m
+JWT_REFRESH_EXPIRY=7d
+CLIENT_URL=https://<your-frontend-url>.up.railway.app
+```
+
+7. **Redeploy** — the backend should now be live at `https://<your-backend-url>.up.railway.app/api/v1/health`
+
+---
+
+### Step 3 — Deploy the Frontend
+
+1. Click **"New Service"** → **"GitHub Repo"** → select the same repo again
+2. Go to **Settings → Source** and set:
+
+| Setting         | Value     |
+|-----------------|-----------|
+| Root Directory  | `/client` |
+
+3. Go to **Settings → Build** and set:
+
+| Setting              | Value                          |
+|----------------------|--------------------------------|
+| Custom Build Command | `npm install && npm run build` |
+
+4. Go to **Settings → Deploy** and set:
+
+| Setting              | Value                       |
+|----------------------|-----------------------------|
+| Custom Start Command | `npx serve -s dist -l 3000` |
+
+5. Go to **Settings → Networking** → click **"Generate Domain"** to get a public URL, and add **Port `3000`**
+
+6. Go to **Variables** tab and add:
+
+```env
+VITE_API_URL=https://<your-backend-url>.up.railway.app/api/v1
+```
+
+> **Important:** `VITE_` variables are baked in at build time. After adding/changing this variable, you must **redeploy** the frontend for it to take effect.
+
+7. **Redeploy** — the frontend should now be live
+
+---
+
+### Step 4 — Update Backend CORS
+
+After the frontend is deployed, go back to the **backend service → Variables** and update:
+
+```env
+CLIENT_URL=https://<your-frontend-url>.up.railway.app
+```
+
+Redeploy the backend so CORS allows requests from the frontend.
+
+---
+
+### Deployment Summary
+
+| Service  | Root Dir  | Build Command                  | Start Command               | Port |
+|----------|-----------|--------------------------------|-----------------------------|------|
+| Backend  | `/server` | `npm install && npm run build` | `npm start`                 | 3000 |
+| Frontend | `/client` | `npm install && npm run build` | `npx serve -s dist -l 3000` | 3000 |
 
 ---
 
