@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, UserPlus, Loader2, Check, X } from "lucide-react";
+import { Eye, EyeOff, UserPlus, Loader2, Check, X, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { authApi } from "@/services/auth.service";
 import { Button } from "@/components/ui/button";
@@ -83,6 +83,15 @@ export default function SignupPage() {
       </div>
 
       <div className="w-full max-w-md relative z-10">
+        {/* Back to home */}
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300 transition-colors mb-6"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Home
+        </Link>
+
         {/* brand header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-zinc-900 dark:bg-white mb-4">
