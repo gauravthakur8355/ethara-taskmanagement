@@ -67,7 +67,8 @@ api.interceptors.response.use(
       if (!refreshToken) {
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
-        window.location.href = "/login";
+        isRefreshing = false;
+        // ✅ Just reject — let AuthContext catch this and set user = null
         return Promise.reject(error);
       }
 
@@ -90,7 +91,7 @@ api.interceptors.response.use(
         processQueue(refreshError, null);
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
-        window.location.href = "/login";
+        // ✅ Just reject — let AuthContext + ProtectedRoute handle redirect
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
