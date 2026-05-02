@@ -16,20 +16,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Verify stored token on mount
   useEffect(() => {
     const initAuth = async () => {
       const token = localStorage.getItem("accessToken");
+      console.log("🔑 [AuthContext] token found:", !!token);
 
       if (!token) {
+        console.log("🔑 [AuthContext] no token — skipping getMe, setting isLoading=false");
         setIsLoading(false);
         return;
       }
 
       try {
+        console.log("🔑 [AuthContext] calling getMe...");
         const response = await authApi.getMe();
+        console.log("✅ [AuthContext] getMe success — user:", response.data);
         setUser(response.data);
-      } catch {
+      } catch (err) {
+        console.error("❌ [AuthContext] getMe failed — clearing tokens, err:", err);
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
         setUser(null);

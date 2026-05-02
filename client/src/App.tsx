@@ -25,6 +25,7 @@ const queryClient = new QueryClient({
 // Landing page route — redirect to dashboard if already authenticated
 function LandingRoute() {
   const { isAuthenticated, isLoading } = useAuth();
+  console.log("🏠 [LandingRoute] isLoading:", isLoading, "| isAuthenticated:", isAuthenticated);
 
   if (isLoading) return null;
   if (isAuthenticated) return <Navigate to="/dashboard" replace />;
