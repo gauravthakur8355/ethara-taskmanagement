@@ -78,6 +78,7 @@ export default function AppLayout() {
       {/* Desktop Sidebar — hidden on mobile */}
       <aside className="hidden md:flex w-64 border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex-col shrink-0">
         {/* Logo */}
+        <Link to={"/"}>
         <div className="h-16 px-3 flex items-center gap-3 border-b border-zinc-200 dark:border-zinc-800">
           <div className="w-8 h-8 rounded-lg bg-zinc-900 dark:bg-white flex items-center justify-center shrink-0">
             <span className="text-white dark:text-zinc-900 font-bold text-sm">E</span>
@@ -86,6 +87,7 @@ export default function AppLayout() {
             Ethara
           </span>
         </div>
+        </Link>
         {sidebarContent}
       </aside>
 
@@ -96,14 +98,14 @@ export default function AppLayout() {
           <aside className="absolute left-0 top-0 h-full w-72 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col z-50 shadow-xl">
             {/* Mobile logo + close */}
             <div className="h-16 px-3 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800">
-              <div className="flex items-center gap-3">
+              <Link to="/" onClick={() => setMobileOpen(false)} className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-zinc-900 dark:bg-white flex items-center justify-center">
                   <span className="text-white dark:text-zinc-900 font-bold text-sm">E</span>
                 </div>
                 <span className="font-semibold text-zinc-900 dark:text-zinc-100 text-lg">
                   Ethara
                 </span>
-              </div>
+              </Link>
               <Button variant="ghost" size="icon" onClick={() => setMobileOpen(false)}>
                 <X className="h-4 w-4" />
               </Button>
@@ -121,7 +123,7 @@ export default function AppLayout() {
             <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)}>
               <Menu className="h-5 w-5" />
             </Button>
-            <span className="font-semibold text-zinc-900 dark:text-zinc-100">Ethara</span>
+            <Link to="/" className="font-semibold text-zinc-900 dark:text-zinc-100">Ethara</Link>
           </div>
           <Avatar name={user?.name || "U"} size="sm" src={user?.avatar} />
         </header>
