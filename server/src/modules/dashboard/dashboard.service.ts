@@ -1,23 +1,11 @@
 import { prisma } from "../../config/database";
 
-// ══════════════════════════════════════════════════════════════
-// Dashboard Service — aggregated stats for the dashboard
-//
-// this quieries multiple tables to build a summary view
-// of the user's workspace. runs several queries in paralel
-// for performance (Promise.all is your frend)
-//
-// all stats are scoped to projects the user is a memebr of
-// so admins dont magicaly see everyones data — only their projects
-// ══════════════════════════════════════════════════════════════
-
+/**
+ * Dashboard Service — aggregates stats across the user's projects.
+ * All stats are scoped to projects the user is a member of.
+ */
 export const dashboardService = {
-  /**
-   * Get dashboard stats for a user
-   * returns: total tasks, tasks by status, tasks per user, overdue tasks
-   */
   async getStats(userId: string) {
-    // first, get all project IDs the user is a memeber of
     const memberships = await prisma.projectMember.findMany({
       where: { userId },
       select: { projectId: true },
@@ -26,7 +14,6 @@ export const dashboardService = {
     const projectIds = memberships.map((m) => m.projectId);
 
     if (projectIds.length === 0) {
-      // user isnt in any projects — return empty stats
       return {
         totalTasks: 0,
         totalProjects: 0,
@@ -38,8 +25,7 @@ export const dashboardService = {
       };
     }
 
-    // run all queries in paralell — much faster than sequentialy
-    // each query is scoped to the users projects only
+    // Run all queries in parallel for performance
     const [
       totalTasks,
       totalProjects,
@@ -51,15 +37,12 @@ export const dashboardService = {
       myTasks,
       tasksPerUser,
     ] = await Promise.all([
-      // total task count accross all user's projects
       prisma.task.count({
         where: { projectId: { in: projectIds } },
       }),
 
-      // total projects the user belongs too
       projectIds.length,
 
-      // tasks by status — four seprate counts
       prisma.task.count({
         where: { projectId: { in: projectIds }, status: "TODO" },
       }),
@@ -73,8 +56,7 @@ export const dashboardService = {
         where: { projectId: { in: projectIds }, status: "DONE" },
       }),
 
-      // overdue tasks — due date in the past and not yet done
-      // these are the ones that need atention ASAP
+      // Overdue tasks — past due and not completed
       prisma.task.findMany({
         where: {
           projectId: { in: projectIds },
@@ -90,10 +72,10 @@ export const dashboardService = {
           },
         },
         orderBy: { dueDate: "asc" },
-        take: 10, // limit to 10 most overdue — dont want a huge payload
+        take: 10,
       }),
 
-      // tasks assigned to the curent user
+      // Active tasks assigned to the current user
       prisma.task.count({
         where: {
           projectId: { in: projectIds },
@@ -102,8 +84,7 @@ export const dashboardService = {
         },
       }),
 
-      // tasks per user — for the leaderboard/chart
-      // groups by assignee and counts tasks
+      // Tasks grouped by assignee
       prisma.task.groupBy({
         by: ["assignedToId"],
         where: {
@@ -114,7 +95,7 @@ export const dashboardService = {
       }),
     ]);
 
-    // enrich tasksPerUser with user names (groupBy doesnt support includes)
+    // Enrich tasksPerUser with user info (groupBy doesn't support includes)
     const userIds = tasksPerUser
       .map((t) => t.assignedToId)
       .filter((id): id is string => id !== null);

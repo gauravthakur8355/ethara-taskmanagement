@@ -1,13 +1,6 @@
 import axios from "axios";
 
-// ──────────────────────────────────────────────
-// Axios instance — centralized API client
-// all API calls go through this so we can:
-// - set base URL in one place
-// - auto-attach JWT tokens to every reqeust
-// - handle token refresh automaticaly
-// - centralize error handeling
-// ──────────────────────────────────────────────
+// Centralized Axios instance with JWT token management and auto-refresh
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
 
@@ -16,12 +9,10 @@ export const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 15000, // 15 seconds — if the server hasnt responded by then, somethings wrong
+  timeout: 15000,
 });
 
-// ─── Request Interceptor ───
-// attaches the JWT token to every outgoin request
-// so we dont have to manually add headers in every API call
+// Attach JWT token to every outgoing request
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("accessToken");
@@ -33,11 +24,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// ─── Response Interceptor ───
-// handles token expiry automaticaly:
-// 1. if we get a 401, try to refresh the token
-// 2. if refresh works, retry the orignal request
-// 3. if refresh fails too, log out the user
+// Token refresh logic — retry failed 401s with a new access token
 let isRefreshing = false;
 let failedQueue: Array<{
   resolve: (value: unknown) => void;
@@ -60,11 +47,8 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // only try refresh for 401s, and dont retry the refresh endpoint itself
-    // (that would cause an infinte loop lol)
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
-        // if were already refreshing, queue this request
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         })
@@ -81,7 +65,6 @@ api.interceptors.response.use(
       const refreshToken = localStorage.getItem("refreshToken");
 
       if (!refreshToken) {
-        // no refresh token — user needs to login again
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
         window.location.href = "/login";

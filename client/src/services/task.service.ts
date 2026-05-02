@@ -1,9 +1,7 @@
 import { api } from "@/lib/api";
 import type { User } from "./auth.service";
 
-// ──────────────────────────────────────────────
-// Task API service — CRUD + filtering
-// ──────────────────────────────────────────────
+// Task types and API service
 
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
@@ -82,7 +80,8 @@ export const taskApi = {
   },
 };
 
-// ─── Helper maps for display ───
+// Display helpers
+
 export const statusLabels: Record<TaskStatus, string> = {
   TODO: "To Do",
   IN_PROGRESS: "In Progress",

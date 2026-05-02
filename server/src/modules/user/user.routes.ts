@@ -4,18 +4,11 @@ import { asyncHandler } from "../../middleware/error.middleware";
 import { prisma } from "../../config/database";
 import { sendSuccess } from "../../shared/utils/response";
 
-// ══════════════════════════════════════════════════════════════
-// User routes — search users for inviting to projects
-// keeping this lightweight — just the search endpoint for now
-// ══════════════════════════════════════════════════════════════
-
 const router = Router();
 
 router.use(authenticate as any);
 
-// GET /api/v1/users/search?email=xxx
-// searches users by email (exact or partial match)
-// returns basic user info — no passwords or sensitive data obviously
+// GET /api/v1/users/search?email=xxx — search users by email for project invitations
 router.get(
   "/search",
   asyncHandler(async (req: Request, res: Response) => {

@@ -1,10 +1,8 @@
-// custome error class that all our applicaton errors should extend
-// this lets us diferentiate between "expected" errors (like 404, 401)
-// and actual bugs/crashes that we didnt anticipate
-//
-// honestly this pattern has saved me so many times in produciton
-// — knowing whether to page on-call or just log and move on
-
+/**
+ * Base application error class.
+ * Operational errors (expected) vs programmer errors (bugs) are differentiated
+ * via the isOperational flag — helps decide alerting vs logging strategy.
+ */
 export class AppError extends Error {
   public readonly statusCode: number;
   public readonly isOperational: boolean;
@@ -22,21 +20,13 @@ export class AppError extends Error {
     this.isOperational = isOperational;
     this.code = code;
 
-    // this is a weird JS thing — without this line, instanceof checks
-    // wont work properly becuase we're extending a built-in class
-    // took me embarassingly long to figure this out the first time
+    // Required when extending built-in classes in TS
     Object.setPrototypeOf(this, AppError.prototype);
-
-    // captures the stack trace but excludes the constructor call itself
-    // makes debuging a tiny bit cleaner
     Error.captureStackTrace(this, this.constructor);
   }
 }
 
-// ─────────────────────────────────────────────
-// pre-built error types so we dont have to remmber status codes
-// (because who actually remembers if 401 is unauthorized or unauthentcated?)
-// ─────────────────────────────────────────────
+// Pre-built error types for common HTTP status codes
 
 export class NotFoundError extends AppError {
   constructor(resource: string = "Resource") {
@@ -45,25 +35,25 @@ export class NotFoundError extends AppError {
 }
 
 export class UnauthorizedError extends AppError {
-  constructor(message: string = "You are not autherized to do this") {
+  constructor(message: string = "You are not authorized to do this") {
     super(message, 401, "UNAUTHORIZED");
   }
 }
 
 export class ForbiddenError extends AppError {
-  constructor(message: string = "Access deneid") {
+  constructor(message: string = "Access denied") {
     super(message, 403, "FORBIDDEN");
   }
 }
 
 export class BadRequestError extends AppError {
-  constructor(message: string = "Bad requst") {
+  constructor(message: string = "Bad request") {
     super(message, 400, "BAD_REQUEST");
   }
 }
 
 export class ConflictError extends AppError {
-  constructor(message: string = "Resource alredy exists") {
+  constructor(message: string = "Resource already exists") {
     super(message, 409, "CONFLICT");
   }
 }
@@ -72,7 +62,7 @@ export class ValidationError extends AppError {
   public readonly errors: Record<string, string[]>;
 
   constructor(errors: Record<string, string[]>) {
-    super("Validaton failed", 422, "VALIDATION_ERROR");
+    super("Validation failed", 422, "VALIDATION_ERROR");
     this.errors = errors;
   }
 }

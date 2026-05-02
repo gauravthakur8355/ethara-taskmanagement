@@ -4,24 +4,16 @@ import { logger } from "../config/logger";
 import { AppError, ValidationError } from "../shared/errors/AppError";
 import { sendError } from "../shared/utils/response";
 
-// ──────────────────────────────────────────────────────────────
-// THE BIG ONE — centralized error handler
-// every error in the entire app eventualy ends up here
-// this is the last line of defence before the client gets a response
-//
-// now using Winston for structred logging instead of console.log
-// so errors show up properly in log aggregation tools
-// (Datadog, ELK, CloudWatch etc)
-// ──────────────────────────────────────────────────────────────
-
+/**
+ * Global error handler — every error in the app ends up here.
+ * Must be the last middleware registered.
+ */
 export const errorHandler = (
   err: Error,
   _req: Request,
   res: Response,
   _next: NextFunction
 ): void => {
-  // log the full error internaly with Winston
-  // structured format makes it searchible in production
   logger.error("Error caught by global handler", {
     name: err.name,
     message: err.message,
@@ -31,46 +23,38 @@ export const errorHandler = (
     ...((!env.IS_PRODUCTION) && { stack: err.stack }),
   });
 
-  // handle our custom ValidationError — includes field-level errors
+  // Validation errors — include field-level details
   if (err instanceof ValidationError) {
     sendError(res, err.message, err.statusCode, err.code, err.errors);
     return;
   }
 
-  // handle our custom AppError — "expected" errors (404, 401, etc)
+  // Known application errors (404, 401, 403, etc.)
   if (err instanceof AppError) {
     sendError(res, err.message, err.statusCode, err.code);
     return;
   }
 
-  // handle Prisma-specific errors — ORM database errors
+  // Prisma ORM errors
   if (err.name === "PrismaClientKnownRequestError") {
     const prismaError = err as any;
 
     switch (prismaError.code) {
       case "P2002":
-        // unique constraint voilation
         sendError(
           res,
-          `A record with this ${prismaError.meta?.target?.join(", ") || "value"} already exisits`,
+          `A record with this ${prismaError.meta?.target?.join(", ") || "value"} already exists`,
           409,
           "DUPLICATE_ENTRY"
         );
         return;
 
       case "P2025":
-        // record not found
         sendError(res, "Record not found", 404, "NOT_FOUND");
         return;
 
       case "P2003":
-        // foreign key constraint failed
-        sendError(
-          res,
-          "Related record not found — check your refrences",
-          400,
-          "INVALID_REFERENCE"
-        );
+        sendError(res, "Related record not found", 400, "INVALID_REFERENCE");
         return;
 
       default:
@@ -78,21 +62,20 @@ export const errorHandler = (
           code: prismaError.code,
           meta: prismaError.meta,
         });
-        sendError(res, "Database operaton failed", 500, "DATABASE_ERROR");
+        sendError(res, "Database operation failed", 500, "DATABASE_ERROR");
         return;
     }
   }
 
-  // unhandeled error — probaly a bug in our code
+  // Unexpected errors
   const message = env.IS_PRODUCTION
-    ? "Something went wrong — our team has been notifed"
-    : err.message || "Unknown error occured";
+    ? "Something went wrong — our team has been notified"
+    : err.message || "Unknown error occurred";
 
   sendError(res, message, 500, "INTERNAL_ERROR");
 };
 
-// catches async errors so we dont need try/catch in every controller
-// wraps the handler and forwards rejections to the error handler
+/** Wraps async route handlers to forward rejections to the error handler */
 export const asyncHandler = (
   fn: (req: Request, res: Response, next: NextFunction) => Promise<any>
 ) => {

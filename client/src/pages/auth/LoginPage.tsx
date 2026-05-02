@@ -8,19 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
-// ══════════════════════════════════════════════════════════════
-// Login Page — clean, minimalist authenticaton form
-//
-// features:
-// - email + password fields with validaiton
-// - show/hide password toggle (becuase everyone needs this)
-// - error messages from the API shown inline
-// - redirects back to where the user was trying to go
-// - link to signup for new users
-//
-// the design is inspired by linear.app and vercel's login pages
-// becuase they nail the minimalist-but-premium aesthetic
-// ══════════════════════════════════════════════════════════════
 
 export default function LoginPage() {
   const navigate = useNavigate();

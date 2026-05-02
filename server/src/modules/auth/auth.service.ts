@@ -10,24 +10,12 @@ import {
 } from "../../shared/errors/AppError";
 import { RegisterInput, LoginInput } from "./auth.validation";
 
-// ══════════════════════════════════════════════════════════════
-// Auth Service — all the buisness logic for authentication
-//
-// this is the brain of the auth module. controllers are just
-// dumb HTTP adapters that call these methods.
-//
-// IMPORTANT: this layer has NO knowlege of Express, req, or res.
-// it takes plain objects in and returns plain objects out.
-// this makes it testable without mocking HTTP stuff.
-// (trust me, your futrue self will thank you for this)
-// ══════════════════════════════════════════════════════════════
+/**
+ * Auth Service — handles registration, login, token refresh, and profile.
+ * This layer is framework-agnostic (no Express dependency) for testability.
+ */
 
-// how many rounds of bcrypt hasing to do
-// 12 is a good balence between security and speed
-// (10 is the default but we're not basic like that)
 const SALT_ROUNDS = 12;
-
-// ─── Helper: generate JWT tokens ───
 
 const generateAccessToken = (payload: JWTPayload): string => {
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
@@ -41,9 +29,7 @@ const generateRefreshToken = (payload: JWTPayload): string => {
   });
 };
 
-// builds the token paylaod from a user record
-// we only incldue the bare minimum — userId, email, role
-// dont put sensitiv data in JWTs, they're base64 encoded NOT encrypted
+// Build minimal JWT payload from a user record
 const buildTokenPayload = (user: {
   id: string;
   email: string;
@@ -54,32 +40,19 @@ const buildTokenPayload = (user: {
   role: user.role as UserRole,
 });
 
-// ─── Service Methods ───
-
 export const authService = {
-  /**
-   * Register a new user
-   * - checks if email is alredy taken
-   * - hashes the password (NEVER store plaintext)
-   * - creates the user record
-   * - returns tokens so the user is logged in imediately after registring
-   */
+  /** Register a new user — auto-login by returning tokens */
   async register(data: RegisterInput) {
-    // check if someone already registred with this email
     const existingUser = await prisma.user.findUnique({
       where: { email: data.email },
     });
 
     if (existingUser) {
-      // dont tell them the exact email — just say its taken
-      // (prevents email enumaration attacks... kinda)
-      throw new ConflictError("An account with this email alredy exists");
+      throw new ConflictError("An account with this email already exists");
     }
 
-    // hash the password — bcrypt handles salt generation internaly
     const hashedPassword = await bcrypt.hash(data.password, SALT_ROUNDS);
 
-    // create the user — defaults to MEMBER role
     const user = await prisma.user.create({
       data: {
         name: data.name,
@@ -92,65 +65,46 @@ export const authService = {
         email: true,
         role: true,
         createdAt: true,
-        // explictly NOT selecting password — never send it back
       },
     });
 
-    // generate both tokens
     const tokenPayload = buildTokenPayload(user);
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = generateRefreshToken(tokenPayload);
 
-    return {
-      user,
-      accessToken,
-      refreshToken,
-    };
+    return { user, accessToken, refreshToken };
   },
 
   /**
-   * Login with email and pasword
-   * - finds user by email
-   * - compares password hash
-   * - returns fresh tokens
-   *
-   * note: we intentionaly use the same error message for both
-   * "user not found" and "wrong password" — so attackers cant
-   * figure out wich emails are registred in our system
+   * Login with email and password.
+   * Uses the same error message for both "user not found" and "wrong password"
+   * to prevent email enumeration.
    */
   async login(data: LoginInput) {
-    // find user by email — include password for comparision
     const user = await prisma.user.findUnique({
       where: { email: data.email },
     });
 
     if (!user) {
-      // vague error message on purpse — security thru obscurity? no.
-      // security thru not giving away information? yes.
-      throw new UnauthorizedError("Invalid email or pasword");
+      throw new UnauthorizedError("Invalid email or password");
     }
 
-    // check if the account is deactivted
     if (!user.isActive) {
       throw new UnauthorizedError(
-        "Your account has been deactivted — contact an admin"
+        "Your account has been deactivated — contact an admin"
       );
     }
 
-    // compare the provided password with the stored hash
     const isPasswordValid = await bcrypt.compare(data.password, user.password);
 
     if (!isPasswordValid) {
-      // same vague message as above — dont tell them wich one was wrong
-      throw new UnauthorizedError("Invalid email or pasword");
+      throw new UnauthorizedError("Invalid email or password");
     }
 
-    // generate fresh tokens
     const tokenPayload = buildTokenPayload(user);
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = generateRefreshToken(tokenPayload);
 
-    // return user data WITHOUT the password hash
     const { password: _, ...userWithoutPassword } = user;
 
     return {
@@ -161,25 +115,17 @@ export const authService = {
   },
 
   /**
-   * Refresh the access token using a valid refesh token
-   * - verifies the refresh token
-   * - checks if user still exisits and is active
-   * - issues new token pair
-   *
-   * this is why we have two tokens — the access token is short-lived (15min)
-   * so if its comprommised, the damage window is small.
-   * the refresh token is long-lived but can only be used to get new tokens.
+   * Refresh access token using a valid refresh token.
+   * Issues a new token pair (token rotation for security).
    */
   async refreshToken(refreshToken: string) {
     try {
-      // verify the refresh token
       const decoded = jwt.verify(
         refreshToken,
         env.JWT_REFRESH_SECRET
       ) as JWTPayload;
 
-      // make sure the user still exsists and is active
-      // (they might have been deleted or deactivted since the token was issued)
+      // Verify user still exists and is active
       const user = await prisma.user.findUnique({
         where: { id: decoded.userId },
         select: {
@@ -191,11 +137,9 @@ export const authService = {
       });
 
       if (!user || !user.isActive) {
-        throw new UnauthorizedError("User no longer exisits or is deactivated");
+        throw new UnauthorizedError("User no longer exists or is deactivated");
       }
 
-      // issue new tokens — essentially "rotating" the refresh token
-      // this is a securiy best practice
       const tokenPayload = buildTokenPayload(user);
       const newAccessToken = generateAccessToken(tokenPayload);
       const newRefreshToken = generateRefreshToken(tokenPayload);
@@ -206,21 +150,16 @@ export const authService = {
       };
     } catch (error) {
       if (error instanceof jwt.TokenExpiredError) {
-        throw new UnauthorizedError(
-          "Refresh token expried — please login again"
-        );
+        throw new UnauthorizedError("Refresh token expired — please login again");
       }
       if (error instanceof jwt.JsonWebTokenError) {
         throw new UnauthorizedError("Invalid refresh token");
       }
-      throw error; // re-throw unexpcted errors
+      throw error;
     }
   },
 
-  /**
-   * Get the current user's profile
-   * just a simple lookup by ID — nothing fancy
-   */
+  /** Get the current user's profile with project/task counts */
   async getMe(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -233,7 +172,6 @@ export const authService = {
         isActive: true,
         createdAt: true,
         updatedAt: true,
-        // lets also grab their project count — usefull for the dashboard
         _count: {
           select: {
             projectMembers: true,
