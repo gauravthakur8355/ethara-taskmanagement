@@ -75,17 +75,34 @@ app.use("/api/health", healthLimiter); // relaxed — 60 req/min
 app.use("/api", generalLimiter); // moderate — 100 req/15min
 
 // ─── CORS ───
-// only allow reqests from our frontend URL
-// the methods and headers list should match what the frontend actualy uses
+// supports comma-separated CLIENT_URL for multiple origins
+// e.g., CLIENT_URL="https://app.example.com,https://staging.example.com"
+const allowedOrigins = env.CLIENT_URL
+  .split(",")
+  .map((url) => url.trim().replace(/\/$/, "")); // strip trailing slashes
+
+// in development, also allow localhost origins
+if (!env.IS_PRODUCTION) {
+  allowedOrigins.push("http://localhost:3000", "http://localhost:5173");
+}
+
 app.use(
   cors({
-    origin: env.IS_PRODUCTION
-      ? env.CLIENT_URL // strict in production
-      : [env.CLIENT_URL, "http://localhost:3000", "http://localhost:5173"], // multiple origins in dev
+    origin: (origin, callback) => {
+      // allow requests with no origin (curl, server-to-server, mobile)
+      if (!origin) return callback(null, true);
+
+      const normalized = origin.replace(/\/$/, "");
+      if (allowedOrigins.includes(normalized)) {
+        return callback(null, true);
+      }
+
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
     credentials: true, // needed for cookies and auth hedders
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    exposedHeaders: ["RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset"], // so frontend can show "X requests remaining"
+    exposedHeaders: ["RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset"],
   })
 );
 
