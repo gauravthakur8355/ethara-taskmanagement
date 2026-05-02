@@ -75,6 +75,15 @@ export default function ProjectDetailPage() {
     }
   };
 
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      await taskApi.delete(taskId);
+      await fetchTasks();
+    } catch (err: any) {
+      alert(err.response?.data?.message || "Failed to delete task");
+    }
+  };
+
   const handleRemoveMember = async (memberUserId: string) => {
     if (!projectId) return;
     if (!confirm("Are you sure you want to remove this member?")) return;
@@ -245,6 +254,7 @@ export default function ProjectDetailPage() {
         tasks={tasks}
         onCreateTask={handleCreateTask}
         onStatusChange={handleStatusChange}
+        onDeleteTask={handleDeleteTask}
         isAdmin={isAdmin}
       />
 
