@@ -15,7 +15,7 @@ Built as a simplified version of tools like Trello and Asana.
 
 | Role   | Email                  | Password    |
 |--------|------------------------|-------------|
-| Admin  | admin123@gmail.com     | Admin123@   |
+| Admin  | admin123@gmail.com     | Admin@123   |
 | Member | testuser1@gmail.com    | Test@1234   |
 | Member | testuser2@gmail.com    | Test@1234   |
 
